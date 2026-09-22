@@ -1,8 +1,14 @@
 # hybridcrypt
 
-**Dateiverschlüsselung als natives Desktop-Tool — kein Server, kein Browser, kein offener Port.**
+**Dateiverschlüsselung als natives Desktop-Tool - entwickelt für Mac OS 13.7 und Tails OS.**
 
 Dieses README ist ausschließlich aus dem Quellcode (`src/*.rs`, `Cargo.toml`) von hybridcrypt 0.3.0 abgeleitet.
+Große Teile des Codes und der Kommentare wurden mit Unterstützung von Claude Opus 5 geschrieben. Hierzu wurde das 
+Konzept des Loop-Engineerings genutzt, wobei Claude Opus 5 die Programmierarbeit übernahm, GPT5 anschließend auf Basis 
+des Codes eine Audit Liste schrieb und eine vollständig neue Instanz von Opus 5 diese anhand des Codes abarbeitete und 
+anpasste. Das Prinzip wurde so lange wiederholt (5 Durchgänge), bis eine im Rahmen des Projekts ausreichende Härtung erreicht 
+wurde und die Audits keine sicherheitsrelevanten Fehler mehr fanden. Ein gründliches Code fuzzing fand bisher nicht statt.
+Zu guter letzt wurde der Code noch einmal manuell begutachtet. 
 
 ![Version](https://img.shields.io/badge/version-0.3.0-blue) ![Sprache](https://img.shields.io/badge/language-Rust-orange) ![Plattform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%2FTails-lightgrey)
 

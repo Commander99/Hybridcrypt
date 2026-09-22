@@ -1,0 +1,630 @@
+# Security Audit Brief — hybridcrypt 0.2.1
+
+## 1. Audit Scope
+
+Perform a security-focused cryptographic and implementation audit of **hybridcrypt 0.2.1**, a Rust application for local file encryption intended for **macOS 13.7 and Tails**.
+
+The attached README describes the intended architecture and documented tests. Treat those statements as **claims to verify against the source code**, not as proof of correct implementation.
+
+Primary objective:
+
+> Determine whether the cryptographic construction, file format, key management, memory handling, process isolation, and parser implementation are sound, and identify vulnerabilities or avoidable weaknesses.
+
+Prioritize concrete exploitable weaknesses over stylistic/code-quality observations.
+
+---
+
+## 2. Intended Cryptographic Construction
+
+According to the README:
+
+```text
+Recipient public key:
+    ML-KEM-1024 encapsulation key
+    +
+    P-384 public key
+
+Encryption:
+    ML-KEM-1024 encapsulation
+    P-384 ephemeral ECDH
+          │
+          ├── ML-KEM shared secret
+          │
+          └── ECDH shared secret
+                  │
+                  ▼
+          concatenation
+                  │
+                  ▼
+          HKDF-SHA-256
+                  │
+                  ▼
+       ChaCha20-Poly1305 key
+                  │
+                  ▼
+             ciphertext
+```
+
+Session key derivation claimed by the README:
+
+```text
+IKM = ML-KEM-SS || ECDH-SS
+
+HKDF-SHA256(
+    IKM,
+    info = "hybridcrypt-v2" || Header
+)
+```
+
+Verify the exact HKDF `salt`, `info`, extract/expand usage, encoding, ordering, and key length in the source.
+
+Do **not** assume that the README's description exactly matches the implementation.
+
+---
+
+## 3. File Formats
+
+### `.hpub`
+
+Claimed format:
+
+```text
+"HPB2"
+| u32
+| ML-KEM-EK
+| u32
+| P-384 point (SEC1)
+```
+
+### `.hkey`
+
+Claimed format:
+
+```text
+"HSK2"
+| m_cost u32
+| t_cost u32
+| lanes u32
+| salt[16]
+| nonce[12]
+| ChaCha20-Poly1305(
+      u32 | ML-KEM-DK
+      ||
+      u32 | P-384-scalar
+  )
+| tag[16]
+```
+
+AAD:
+
+```text
+everything before ciphertext
+```
+
+Passphrase protection:
+
+```text
+Argon2id
+128 MiB
+t = 4
+lanes = ...
+```
+
+Verify all parameter handling, serialization, authentication, and parsing.
+
+### `.hcx`
+
+Claimed format:
+
+```text
+"HCX2"
+| u32
+| ML-KEM ciphertext
+| u32
+| ephemeral P-384 point
+| base_nonce[12]
+
+then:
+
+    u32 length
+    ciphertext
+    tag[16]
+
+    ... repeated ...
+```
+
+Nonce:
+
+```text
+nonce = base_nonce XOR counter
+        counter encoded LE in final 8 bytes
+```
+
+AAD:
+
+```text
+counter(8, LE) || last_flag(1)
+```
+
+The header is included in HKDF `info`.
+
+Verify:
+
+* counter uniqueness
+* counter overflow behavior
+* nonce uniqueness
+* chunk length validation
+* integer overflow handling
+* EOF handling
+* `last_flag` semantics
+* rejection of trailing data
+* truncation resistance
+* chunk reordering resistance
+* header manipulation resistance
+* malformed ciphertext handling.
+
+---
+
+## 4. Security Properties Claimed by the README
+
+The README documents the following:
+
+* ML-KEM-1024 (FIPS 203)
+* P-384 ECDH
+* HKDF-SHA-256
+* ChaCha20-Poly1305
+* Argon2id for `.hkey` protection
+* authenticated header
+* authenticated chunks
+* truncation protection via `last_flag`
+* no network service
+* native Rust GUI
+* worker process via re-exec rather than `fork`
+* secrets passed through fd 3 rather than argv
+* plaintext streamed via file descriptors
+* `mlock`/secure buffers
+* zeroization
+* core dumps disabled
+* Linux `PR_SET_DUMPABLE=0`
+* macOS `PT_DENY_ATTACH`
+* Tails as target environment.
+
+The README reports tests for:
+
+```text
+wrong passphrase                  -> reject
+modified .hkey                    -> reject
+downgraded Argon2 parameters      -> reject
+wrong key type                    -> reject
+foreign key pair                  -> reject
+truncated final chunk             -> reject
+truncated ciphertext              -> reject
+modified payload                  -> reject
+modified header                   -> reject
+reordered chunks                  -> reject
+```
+
+These tests must be treated as **reported tests**, not independently verified security evidence.
+
+---
+
+# 5. Highest-Priority Audit Questions
+
+## A. ML-KEM implementation
+
+Inspect the exact Rust crate/API usage.
+
+Verify:
+
+* correct ML-KEM-1024 parameter set
+* correct distinction between encapsulation key and ciphertext
+* correct decapsulation API
+* correct handling of decapsulation failure
+* no accidental use of an encapsulation key where ciphertext is expected
+* no implicit downgrade to another parameter set
+* secret material zeroization
+* randomness source
+* rejection of malformed KEM data.
+
+The README explicitly documents a previous issue where an ML-KEM ciphertext was parsed using an `Encoded<EncapsulationKey>` type because both happened to be 1568 bytes. Verify that the corrected implementation is actually used everywhere.
+
+---
+
+## B. P-384 ECDH
+
+This is a critical audit area.
+
+Verify:
+
+* correct P-384 curve
+* correct SEC1 encoding/decoding
+* public-key validation
+* rejection of invalid/off-curve points
+* rejection of the point at infinity
+* correct ECDH operation
+* scalar generation from a CSPRNG
+* scalar zeroization
+* correct handling of invalid peer keys
+* no small-subgroup/cofactor-related issue
+* no algorithm confusion.
+
+Do not assume the underlying Rust crate's behavior without checking its actual API and version.
+
+---
+
+## C. Hybrid KDF
+
+Determine whether combining:
+
+```text
+ML-KEM-SS || ECDH-SS
+```
+
+through HKDF is implemented correctly.
+
+Check:
+
+* ordering
+* fixed-length encoding
+* domain separation
+* version binding
+* algorithm binding
+* recipient binding if relevant
+* whether both secrets are guaranteed to influence the resulting key
+* whether a failure of either KEM/ECDH causes complete decryption failure
+* exact HKDF salt semantics
+* no accidental raw hashing instead of HKDF.
+
+Assess whether the construction provides the intended hybrid security property.
+
+---
+
+## D. ChaCha20-Poly1305 / nonce management
+
+Verify:
+
+* 256-bit key
+* 96-bit nonce
+* cryptographically random `base_nonce`
+* guaranteed nonce uniqueness for every chunk under one derived key
+* counter initialization
+* counter overflow behavior
+* maximum file/chunk count
+* no nonce reuse across encryptions
+* correct Poly1305 tag verification before releasing plaintext.
+
+Determine whether XORing the counter into the final 8 bytes of the random base nonce is safe under the actual implementation.
+
+---
+
+## E. File parser / malicious input
+
+Treat `.hcx` and `.hkey` as attacker-controlled input.
+
+Audit for:
+
+* integer overflow
+* integer truncation
+* allocation bombs
+* unreasonable chunk lengths
+* malformed length prefixes
+* truncated structures
+* excessive chunk counts
+* counter wraparound
+* duplicate/non-monotonic counters
+* trailing data
+* malformed SEC1 points
+* malformed ML-KEM data
+* panic paths
+* denial-of-service conditions.
+
+The parser should fail closed.
+
+---
+
+# 6. Password Protection
+
+The `.hkey` is protected with Argon2id.
+
+Reported parameters:
+
+```text
+128 MiB
+t = 4
+parallelism/lanes = stored in file
+16-byte salt
+```
+
+Audit:
+
+* Argon2id implementation and version
+* parameter validation
+* minimum/maximum accepted parameters
+* downgrade resistance
+* whether attacker-controlled parameters can cause DoS
+* whether the derived key has correct length
+* whether all private key material is authenticated
+* whether the authentication check is constant-time where applicable.
+
+Important distinction:
+
+> Argon2 protects the private key against offline password guessing; it does not make a weak user password strong.
+
+Assess whether the application enforces or merely recommends adequate passphrase entropy.
+
+---
+
+# 7. Memory / Secret Handling
+
+The README claims extensive memory hardening.
+
+Verify actual behavior for:
+
+* passphrase
+* Argon2 memory
+* ML-KEM private key
+* P-384 private scalar
+* both shared secrets
+* derived session key
+* plaintext chunks
+* ciphertext buffers
+* temporary buffers.
+
+Important documented issue:
+
+The README states that when `RLIMIT_MEMLOCK` is insufficient, the 128 MiB Argon2 memory is **not locked**, but the program continues successfully.
+
+Determine whether this violates the intended security model.
+
+Recommended assessment:
+
+* Is this merely a hardening limitation?
+* Or does the application promise memory-residency protection strongly enough that continuing without `mlock` should be considered a security defect?
+
+Check for:
+
+* hidden heap copies
+* `Vec::to_vec()`
+* `String` conversions
+* allocator copies
+* library-internal copies
+* compiler optimization defeating zeroization
+* zeroization before `munlock`
+* zeroization of entire capacity vs logical length.
+
+---
+
+# 8. Process Isolation
+
+The README uses re-exec instead of `fork()`:
+
+```text
+GUI process
+    │
+    └── spawn current executable --worker
+             │
+             ├── fd 0 input
+             ├── fd 1 output
+             ├── fd 2 /dev/null
+             └── fd 3 control/secrets
+```
+
+Audit:
+
+* file descriptor inheritance
+* CLOEXEC handling
+* race conditions
+* worker command validation
+* whether secrets can appear in `/proc`
+* whether secrets appear in environment variables
+* whether secrets appear in argv
+* whether GUI memory can receive plaintext
+* whether errors can leak key material
+* whether file descriptors are accidentally inherited by unrelated subprocesses.
+
+---
+
+# 9. Authentication vs Authenticity
+
+The current design intentionally provides:
+
+```text
+confidentiality
++
+ciphertext integrity
+```
+
+but not:
+
+```text
+sender authentication / signatures
+```
+
+The README explicitly states that anyone possessing the recipient `.hpub` can create a ciphertext for that recipient.
+
+Assess this as a **missing feature rather than automatically a vulnerability**.
+
+If the threat model requires sender authenticity, discuss whether a signature layer such as ML-DSA would be appropriate and how signatures should be bound to the exact ciphertext/header/protocol version.
+
+Do not recommend signatures merely for their own sake.
+
+---
+
+# 10. Tails Threat Model
+
+The application is intended to run on Tails.
+
+Assess separately:
+
+### Application-level protection
+
+* no network
+* no server
+* no browser
+* no persistent application state
+* RAM-oriented operation
+* core dump suppression
+* process isolation.
+
+### Tails/system-level limitations
+
+Consider:
+
+* malicious/compromised hardware
+* kernel compromise
+* keyloggers
+* firmware compromise
+* cold-boot attacks
+* memory disclosure
+* display/input stack copies
+* physical access.
+
+Do not claim that Tails makes the application cryptographically stronger; distinguish OS-level forensic resistance from cryptographic strength.
+
+---
+
+# 11. Known Historical Issues
+
+The README documents several previously identified issues. Verify that the fixes are complete:
+
+1. HTTP multipart parser discarded bytes after a boundary.
+2. Browser-based architecture exposed a localhost API.
+3. Passphrase existed in JavaScript/GC-managed memory.
+4. Truncation of v1 `.hcx` could be accepted.
+5. ML-KEM ciphertext used the wrong encoded type.
+6. `mlock()` was incorrectly applied to unaligned memory.
+7. plaintext temporarily existed in ordinary `Vec`s.
+8. Argon2 memory was previously not locked/zeroized.
+9. `mlockall(MCL_FUTURE)` could cause allocation failures.
+10. `panic = "abort"` prevented Drop-based zeroization.
+11. native file dialogs generated persistent file-name traces.
+12. egui TextEdit could retain passphrase copies.
+13. secrets/operations in argv would have been visible via `ps`.
+14. output files could previously be overwritten.
+
+These are important because they demonstrate that the project has already had several security-relevant implementation defects.
+
+---
+
+# 12. Recommended Testing
+
+If source code is available, perform at minimum:
+
+### Fuzzing
+
+Fuzz:
+
+```text
+.hpub parser
+.hkey parser
+.hcx parser
+chunk lengths
+counter values
+SEC1 points
+ML-KEM blobs
+truncated files
+random files
+```
+
+Desired property:
+
+> malformed input must reject cleanly, without panic, memory exhaustion, or unintended plaintext output.
+
+### Property tests
+
+Verify:
+
+```text
+encrypt(decrypt(C)) == C
+```
+
+and:
+
+```text
+any 1-bit modification -> authentication failure
+```
+
+for:
+
+* header
+* KEM ciphertext
+* P-384 point
+* nonce
+* chunk length
+* ciphertext
+* tag
+* chunk ordering
+* chunk count
+* truncation
+* appended data.
+
+### Differential / standard test vectors
+
+Use official test vectors where applicable for:
+
+* ML-KEM
+* P-384 ECDH
+* HKDF-SHA-256
+* ChaCha20-Poly1305
+* Argon2id.
+
+---
+
+# 13. Findings Classification
+
+For every finding, use:
+
+```text
+ID:
+Severity: Critical / High / Medium / Low / Informational
+Confidence: High / Medium / Low
+Component:
+Location:
+Finding:
+Technical impact:
+Exploitability:
+Affected threat model:
+Evidence:
+Recommended fix:
+```
+
+Do not inflate severity.
+
+Explicitly distinguish:
+
+* cryptographic design flaw
+* implementation vulnerability
+* hardening deficiency
+* denial of service
+* metadata leakage
+* missing functionality
+* theoretical concern
+* informational observation.
+
+---
+
+# 14. Final Assessment Required
+
+Conclude with four separate sections:
+
+### 1. Confirmed vulnerabilities
+
+Only issues demonstrated from the source.
+
+### 2. Security weaknesses / hardening gaps
+
+Real weaknesses that may not constitute exploitable cryptographic vulnerabilities.
+
+### 3. Design strengths
+
+Briefly identify what is correctly designed and implemented.
+
+### 4. Required changes before high-security use
+
+Prioritized remediation list.
+
+Do **not** give an overall numerical security score.
+
+The most important question is:
+
+> Is hybridcrypt 0.2.1 cryptographically sound as implemented, and what concrete changes would most improve its resistance to cryptanalysis, implementation attacks, forensic recovery, and malicious ciphertexts?

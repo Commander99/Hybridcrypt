@@ -10,6 +10,8 @@ anpasste. Das Prinzip wurde so lange wiederholt (5 Durchgänge), bis eine im Rah
 wurde und die Audits keine sicherheitsrelevanten Fehler mehr fanden. Ein gründliches Code fuzzing fand bisher nicht statt.
 Zu guter letzt wurde der Code noch einmal manuell begutachtet. 
 
+Die Kryptografie beruht auf einer hybriden Kombination von ML-KEM-1024 × P-384 × SHA-256 · ChaCha20-Poly1305.
+
 ![Version](https://img.shields.io/badge/version-0.3.0-blue) ![Sprache](https://img.shields.io/badge/language-Rust-orange) ![Plattform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%2FTails-lightgrey)
 
 ---

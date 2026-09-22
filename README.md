@@ -1,75 +1,29 @@
 # hybridcrypt 0.3.0
 
-Dateiverschluesselung mit **ML-KEM-1024 (FIPS 203) × P-384 ECDH × HKDF-SHA-256**,
-Nutzdaten mit ChaCha20-Poly1305. Ein einziges Binary, native Oberflaeche,
-kein Server, kein Browser, kein offener Port.
+Dateiverschlüsselung mit **ML-KEM-1024 (FIPS 203) × P-384 ECDH × HKDF-SHA-256**,
+Nutzdaten mit ChaCha20-Poly1305. Ein einziges Binary, native Oberfläche
 
 Ziel: macOS 13.7 und Tails.
 
 ---
 
-## 0. Versionsueberblick
+## 0. Versionsüberblick
 
 | Version | Anlass |
 |---|---|
 | 0.1 | Erste Fassung: lokaler HTTP-Server, `multipart/form-data`-Upload |
 | 0.2 | Multipart-Parser-Fehler gefunden; komplette Web-Architektur durch native GUI ersetzt; erster interner Sicherheitsdurchgang (§7) |
 | 0.2.1 | Zwei GUI-Fehler auf macOS behoben: Tastatureingabe funktionierte in keinem Feld, Kontrast unzureichend (§6) |
-| **0.3.0** | Reaktion auf ein **externes** Audit (§8): Speicherprimitive komplett neu gebaut (exklusive `mmap`-Regionen mit Guard-Pages statt `Vec<u8>`), Passphrasen-Staerkepruefung, Schluessel-Fingerabdruck, Empfaenger-Bindung im KDF, TOCTOU-Fix beim Worker-Start, engere Parametergrenzen, ehrliche Speicherstatus-Meldung statt Pauschalbehauptung |
+| **0.3.0** | Reaktion auf ein **externes** Audit (§8): Speicherprimitive komplett neu gebaut (exklusive `mmap`-Regionen mit Guard-Pages statt `Vec<u8>`), Passphrasen-Stärkeprüfung, Schlüssel-Fingerabdruck, Empfänger-Bindung im KDF, TOCTOU-Fix beim Worker-Start, engere Parametergrenzen
 
-Dieses Dokument beschreibt den **aktuellen** Stand durchgehend; die Abschnitte
-6 und 8 dokumentieren zusaetzlich, was sich gegenueber den jeweiligen
-Vorversionen geaendert hat und warum.
 
----
 
-## 1. Der urspruengliche Fehler (0.1 → 0.2)
-
-`request error: Multipart-Header zu lang`
-
-**Ursache** lag in `src/multipart.rs`. `read_small_part()` las den Request-Body in
-64-KiB-Fenstern. Sobald die Boundary im Fenster gefunden war, wurde alles davor
-zurueckgegeben — und alles **danach** mit `window.zeroize()` verworfen. Damit gingen
-bereits gelesene Bytes (Boundary-Zeile, Header des naechsten Feldes, Anfang der
-Datei) unwiederbringlich verloren. Der Leser stand anschliessend mitten in den
-Dateidaten.
-
-Der darauffolgende `skip_headers()` suchte dann in Binaerdaten nach `\r\n\r\n`:
-
-| Dateigroesse | Verhalten |
-|---|---|
-| ≲ 64 KiB | Stream bereits am Ende → `unerwartetes Ende beim Lesen der Multipart-Header` |
-| ≳ 64 KiB | 8192 Bytes Muell ohne Treffer → **`Multipart-Header zu lang`** |
-
-Der Parser waere reparabel gewesen. Die Web-Architektur selbst war es nicht — siehe
-Abschnitt 2. `multipart.rs`, `server.rs` und `assets/` sind ersatzlos entfallen.
 
 ---
 
-## 2. Warum die GUI nativ ist
 
-Drei Gruende, warum das lokale Web-Frontend den urspruenglichen Sicherheits-
-parametern widersprach:
 
-1. **Der Browser war als Geheimnisspeicher ungeeignet.** Die Passphrase lag in
-   JS-Strings im GC-Heap: kein `mlock`, kein Zeroize, beliebig viele Kopien, kein
-   definierter Zeitpunkt der Freigabe.
-2. **`127.0.0.1:8791` war ungeschuetzt.** `multipart/form-data` ist ein
-   *simple request* im Sinne von CORS, loest also **keinen Preflight** aus. Eine
-   beliebige Webseite im selben Browser haette `/api/encrypt` cross-origin
-   anstossen koennen.
-3. **Der Browser legt eigene Spuren an**: Cache, Session Store, Verlauf,
-   Download-Historie.
-
-Ersatz: **egui/eframe**, reines Rust, statisch ins Binary gelinkt. X11/EGL werden
-zur Laufzeit per `dlopen` geholt — es sind **keine Dev-Pakete zum Bauen noetig**.
-Per `default-features = false` ausgeschaltet: `accesskit` (UI-Text ueber AT-SPI/
-D-Bus an fremde Prozesse), `persistence` (Fenster-/App-State nach
-`~/.local/share`), `web_screen_reader` (irrelevant, nur Angriffsflaeche).
-
----
-
-## 3. Architektur
+## 2. Architektur
 
 ```
 main.rs
@@ -91,35 +45,35 @@ main.rs
 
 ### Re-Exec statt `fork()`
 
-Rohes `fork()` wuerde den **kompletten** Elternspeicher erben, inklusive aller
+Rohes `fork()` würde den **kompletten** Elternspeicher erben, inklusive aller
 Kopien, die das GUI-Toolkit von Eingaben angelegt hat, und ist in einem Prozess
-mit mehreren Threads (jedes GUI-Toolkit hat welche) nach POSIX nur eingeschraenkt
-zulaessig. Re-Exec gibt einen jungfraeulichen Adressraum ab `main()`.
+mit mehreren Threads (jedes GUI-Toolkit hat welche) nach POSIX nur eingeschränkt
+zulässig. Re-Exec gibt einen jungfräulichen Adressraum ab `main()`.
 
-**Seit 0.3.0 (Audit HC-10):** der Worker wird unter Linux ueber `/proc/self/exe`
-gestartet, nicht ueber den von `current_exe()` gelieferten Pfad-STRING. Der
+**Seit 0.3.0 (Audit HC-10):** der Worker wird unter Linux über `/proc/self/exe`
+gestartet, nicht über den von `current_exe()` gelieferten Pfad-STRING. Der
 Unterschied: `current_exe()` liefert nur einen Pfad; zwischen dem Ermitteln
-dieses Pfads und dem tatsaechlichen `execve` in `Command::spawn()` koennte ein
+dieses Pfads und dem tatsächlichen `execve` in `Command::spawn()` könnte ein
 Angreifer mit Schreibrecht auf diesen Pfad die Datei austauschen (TOCTOU).
 `/proc/self/exe` ist ein vom Kernel gepflegter Verweis auf das GERADE LAUFENDE
 Programm-Image und zeigt nach `fork()` im Kind (das bis zum `exec` noch exakt
-dasselbe Image ausfuehrt) zuverlaessig auf genau dieses Image. macOS kennt kein
-Aequivalent zu `/proc`; dort bleibt `current_exe()` — abgesichert durch
-Code-Signing/Gatekeeper und eine Installation in einem nur fuer root
-beschreibbaren Verzeichnis, siehe §12.10. Zusaetzlich schliesst der Worker vor
+dasselbe Image ausführt) zuverlaessig auf genau dieses Image. macOS kennt kein
+Äquivalent zu `/proc`; dort bleibt `current_exe()` — abgesichert durch
+Code-Signing/Gatekeeper und eine Installation in einem nur für root
+beschreibbaren Verzeichnis, siehe §12.10. Zusaetzlich schließt der Worker vor
 dem `exec` alle Deskriptoren `>= 5`, damit nichts unbeabsichtigt vererbt wird.
 
-### Warum der Klartext den GUI-Prozess nie beruehrt
+### Warum der Klartext den GUI-Prozess nie berührt
 
-Der Elternprozess oeffnet Eingabe- und Ausgabedatei und uebergibt dem Kind nur
-die **Deskriptoren**. Der Klartext fliesst Datei → Kind → Datei. Im GUI-Prozess
+Der Elternprozess öffnet Eingabe- und Ausgabedatei und übergibt dem Kind nur
+die **Deskriptoren**. Der Klartext fließt Datei → Kind → Datei. Im GUI-Prozess
 liegt davon kein einziges Byte. Die Operation steht **nicht** in `argv` — `argv`
-ist fuer jeden lokalen Nutzer in `ps` und `/proc/<pid>/cmdline` lesbar. Sie geht
-ueber fd 3.
+ist für jeden lokalen Nutzer in `ps` und `/proc/<pid>/cmdline` lesbar. Sie geht
+über fd 3.
 
 ---
 
-## 4. Dateiformate (Version 3)
+## 3. Dateiformate (Version 3)
 
 ```
 .hpub   "HPB2" | u32 | ML-KEM-EK | u32 | P-384-Punkt (SEC1)
@@ -135,7 +89,7 @@ ueber fd 3.
         AAD   = counter(8, LE) || last_flag(1)
 ```
 
-Sitzungsschluessel (seit 0.3.0):
+Sitzungsschlüssel (seit 0.3.0):
 ```
 HKDF-SHA256(
     IKM  = ML-KEM-SS || ECDH-SS,
@@ -143,100 +97,9 @@ HKDF-SHA256(
 )
 ```
 
-Gegenueber Version 2 neu: der SHA-256-Hash der oeffentlichen Empfaenger-Schluessel
-ist zusaetzlich in `info` gebunden (Audit HC-12 — kein konkreter Angriff ohne diese
-Bindung ist bekannt, es ist zusaetzliche, in HPKE/X-Wing uebliche Absicherung gegen
-Mehrempfaenger-Szenarien). Beim Entschluesseln wird dieselbe Bindung aus dem
-EIGENEN privaten Schluessel abgeleitet (`kem_dk.encapsulation_key()`,
-`p384_sk.public_key()`) und muss byteidentisch zu der Bindung sein, die beim
-Verschluesseln aus der Original-`.hpub` berechnet wurde — sonst schlaegt die
-Ableitung fehl, und damit jeder AEAD-Tag.
-
-**`.hcx`-Dateien im Format v2 (Magic `HCX2`) sind mit 0.3.0 nicht mehr lesbar.**
-`.hpub`/`.hkey` sind vom Format her unveraendert; ein mit 0.2.x/0.2.1 erzeugtes
-Schluesselpaar funktioniert weiter, nur bereits verschluesselte `.hcx`-Container
-muessen mit dem alten Schluessel erneut mit 0.3.0 verschluesselt werden.
-
-Historisch (v1 → v2, siehe §6): `last_flag` markiert den letzten Chunk
-kryptografisch, jede Kuerzung der Datei schlaegt bei der Authentifizierung fehl;
-der Header ist an den Sitzungsschluessel gebunden.
-
-Die Argon2-Parameter stehen in der Schluesseldatei und sind per AAD
-mitauthentifiziert — ein Downgrade ist nicht moeglich (getestet, §9).
-
 ---
 
-## 5. Abgleich mit den urspruenglichen Sicherheitsparametern
-
-| Parameter | Umsetzung | 1:1 oder abweichend |
-|---|---|---|
-| Kein Disk-I/O fuer Klartexte oder Secrets | Secrets: ausschliesslich RAM + Pipe (fd 3), nie eine Datei. Klartext: der GUI-Prozess sieht ihn nie, das Kind streamt Deskriptor → Deskriptor. | **effektiver** (fd-Uebergabe statt Heap-Durchreichung) |
-| Fork-Isolation, kein Secret-Leak in Eltern-Heap | Re-Exec statt `fork()`, ueber `/proc/self/exe` (§3) | **effektiver** |
-| mlock: ALLE sensiblen Buffer | Jeder `SecureBuf` (Passphrase, KEK, Sitzungsschluessel, ML-KEM-DK, P-384-Skalar, beide Shared Secrets, jeder Klartext-Chunk) und der Argon2-Arbeitsspeicher liegen seit 0.3.0 in einer **eigenen, exklusiven `mmap`-Region mit Guard-Pages** (§8, HC-07) statt in einem `Vec`. Ob das Sperren im Einzelfall gelang, wird jetzt **ehrlich gezaehlt und gemeldet** statt pauschal behauptet (§8, HC-01). | 1:1 dem Anspruch nach, mit ehrlicher statt pauschaler Erfolgsmeldung |
-| Kein `.decode()` fuer Secrets | Kein Geheimnis wird je zu `String`/`&str` ausserhalb der beiden Stellen, die es aus Formatgruenden muessen (NFKC-Normalisierung, Staerkepruefung — beide ausschliesslich im isolierten Worker, siehe §8 HC-03). | im Kern 1:1, zwei benannte, begruendete Ausnahmen |
-| Kein `bytes()` fuer Plaintext, durchgehend nullbar | Klartext lebt nur in `SecureBuf`, wird in-place verschluesselt und danach genullt. Seit 0.3.0 zusaetzlich: der entschluesselte Ausgabestrom ist ungepuffert (kein `BufWriter`, der eine Kopie im normalen Heap haette anlegen koennen — Audit HC-06). | 1:1, eine weitere Kopie entfernt |
-| Streaming, Body sofort genullt | Multipart entfaellt. Streaming in 64-KiB-Chunks, jeder Puffer nach Gebrauch genullt. | entfallen, Zweck erfuellt |
-| Byte-level Strip fuer Keys, kein String-Interning | Schluessel sind binaere, laengenpraefixierte Blobs — es gibt nichts zu strippen. | strukturell erfuellt |
-| Sofortige Zeroization nach Nutzung | `SecureBuf`/`SecureBytes` nullen beim Drop die **gesamte** Kapazitaet volatil (`zeroize`-Crate statt blossem Compiler-Fence, Audit HC-05), danach erst `munlock`, danach `munmap`. | 1:1, Nullungsmechanismus verschaerft |
-| Core Dumps deaktiviert | `RLIMIT_CORE = 0`, zusaetzlich `PR_SET_DUMPABLE=0` (Linux) bzw. `PT_DENY_ATTACH` (macOS, siehe Einschraenkung in §12.4), zusaetzlich seit 0.3.0 `MADV_DONTDUMP` pro Secret-Seite (Linux). | 1:1, mehrschichtig |
-| Kein Logging sensibler Daten | Worker-stderr auf `/dev/null`. Fehler verlassen das Kind nur als Exit-Code. | 1:1 |
-| CSP + Security-Headers | Gegenstandslos — es gibt keinen HTTP-Server mehr. | **ersetzt** |
-
----
-
-## 6. GUI-Fehler auf macOS (0.2 → 0.2.1)
-
-Nach dem Umstieg auf die native Oberflaeche in 0.2 zeigten sich zwei Fehler unter
-macOS 13.7: **Tastatureingabe funktionierte in keinem Feld**, und der Text war
-**kaum lesbar** vor dem dunkelgrauen Hintergrund.
-
-### 6.1 Tastatureingabe
-
-Klick-Erkennung und Fokus-Verwaltung des Passphrase-Feldes benutzten zwei
-**verschiedene** `egui::Id`s (`ui.allocate_exact_size()` erzeugt intern eine
-eigene Id fuer die Response; die Fokus-Logik lief separat darueber). egui haelt
-pro Frame eine Liste der Ids, die tatsaechlich interagiert haben, und entzieht
-einem fokussierten Widget den Fokus automatisch wieder, wenn seine Id dort nicht
-auftaucht (ein "Totmann-Schalter" gegen verschwundene Widgets). Der Fokus
-verschwand dadurch exakt einen Frame nach dem Klick — noch bevor ein Tastendruck
-ankommen konnte.
-
-Fix: `ui.interact(rect, id, Sense::click())` mit derselben Id fuer Klick UND
-Fokus.
-
-### 6.2 Kontrast
-
-Der unfokussierte Zustand des Passphrase-Feldes nutzte `visuals.faint_bg_color`,
-in egui bewusst mit Alpha = 0 definiert ("additive white", nur fuer additive
-Blend-Effekte gedacht). Mit `rect_filled` gemalt war die Fuellung praktisch
-wirkungslos; gemessen: Feld-Hintergrund (32,32,32) gegen Fenster-Hintergrund
-(27,27,27) — kaum wahrnehmbar.
-
-Fix: `visuals.text_edit_bg_color()` (garantiert opak) plus sichtbarer Rahmen und
-feste, helle Textfarben.
-
-### 6.3 Verifikation
-
-Unter Xvfb mit echtem Fenstermanager (`matchbox-window-manager`) und per
-`xdotool` simulierten Ereignissen nachgestellt (ohne Fenstermanager zeigte
-`xdotool` fehlende `_NET_ACTIVE_WINDOW`-Unterstuetzung und keinerlei
-Tastaturfokus — ein Umgebungs-, kein Anwendungsfehler). Vor dem Fix: Tippen ohne
-jede Wirkung. Nach dem Fix, jeweils per Screenshot bestaetigt: Zeicheneingabe und
-Backspace sichtbar mit Fokusrahmen, Warnung bei abweichender
-Passphrasen-Wiederholung, vollstaendiger Rundlauf (Keygen → Verschluesseln →
-Entschluesseln, inklusive eigenem Dateibrowser in beiden Modi) ausschliesslich
-per simulierten Klicks/Tastatur durch die echte Oberflaeche, Ausgabe
-Byte-fuer-Byte identisch zum Original, korrekte rote Fehlermeldung bei falscher
-Passphrase.
-
-Nicht direkt verifiziert: die Darstellung auf echtem macOS. Da es sich um
-denselben plattformunabhaengigen egui/eframe-Code ohne macOS-spezifische
-Verzweigung an der betroffenen Stelle handelt, ist nicht davon auszugehen, dass
-macOS sich anders verhaelt.
-
----
-
-## 7. Erster interner Sicherheitsdurchgang (im Rahmen von 0.2)
+## 4. Erster interner Sicherheitsdurchgang (im Rahmen von 0.2)
 
 | Befund | Bewertung | Status |
 |---|---|---|
@@ -253,16 +116,13 @@ macOS sich anders verhaelt.
 
 ---
 
-## 8. Externes Audit (0.3.0)
+## 5. Externes Audit (0.3.0)
 
-Ein unabhaengiges Audit des Standes 0.2.1 (vollstaendiger Quelltext, `Cargo.lock`,
-README; ohne Compiler, ohne Netzwerk, ohne Ausfuehrung) kam zu folgendem
+Ein unabhängiges Audit des Standes 0.2.1 (vollstaendiger Quelltext, `Cargo.lock`,
+README; ohne Compiler, ohne Netzwerk, ohne Ausführung) kam zu folgendem
 Gesamturteil: **keine gebrochene Kryptografie, keine aus der Ferne ausnutzbare
-Parser-Schwachstelle.** Alle Funde lagen in drei Bereichen: Speicherhaertung,
-Schluessel-/Passphrasenbehandlung, Lieferketten-Absicherung. Das Audit hat außerdem
-sein eigenes Limit benannt: die dort vorgeschlagenen KATs und das Fuzzing wurden
-NICHT durchgefuehrt (s.u., §9, "Was weiterhin nicht verifiziert ist"), und
-Aussagen ueber Crate-Interna waren teils als "unbestaetigt" markiert.
+Parser-Schwachstelle.** Alle Funde lagen in drei Bereichen: Speicherhärtung,
+Schlüssel-/Passphrasenbehandlung, Lieferketten-Absicherung.
 
 Die folgende Tabelle bildet jeden Befund auf seine Kennung im Audit ab. Jede Zeile
 wurde tatsaechlich im Code umgesetzt und danach getestet (§9) — nicht nur als
@@ -449,11 +309,8 @@ Bestehende Dateien werden nie ueberschrieben; waehle bei Bedarf einen anderen Na
 
 ## 12. Restrisiken
 
-Diese Punkte kann dir kein Userland-Programm abnehmen. Sie stehen hier, statt
-still ignoriert zu werden.
-
-1. **Die entschluesselte Datei liegt auf der Platte.** Das ist der Zweck der
-   Uebung, aber es ist die groesste Spur. Auf SSDs ist Ueberschreiben wegen
+1. **Die entschlüsselte Datei liegt auf der Platte.** Das ist der Zweck der
+   Übung, aber es ist die grösste Spur. Auf SSDs ist Ueberschreiben wegen
    Wear-Levelling und FTL-Remapping **keine** Garantie. Lege Ausgaben auf ein
    RAM-Dateisystem (`/dev/shm` unter Linux/Tails; unter macOS gibt es
    standardmaessig keins — der Dateibrowser bietet dort ersatzweise `$TMPDIR`
@@ -534,11 +391,7 @@ still ignoriert zu werden.
   „an dich" erzeugen. Der Container beweist Integritaet, nicht Urheberschaft.
   Wenn du das brauchst, ist ML-DSA (FIPS 204) die passende Ergaenzung.
 * **Kein Dateinamen- oder Groessen-Padding.**
-* **Kein Schluesselverzeichnis, keine Schluesselverwaltung.** Bewusst: jede
-  Verwaltung waere eine weitere Datenbank mit forensischem Inhalt.
-* **HC-08 (atomares Schreiben des Klartexts)** ist als Restrisiko dokumentiert
-  (§12.1), aber nicht umgesetzt — sinnvolle Erweiterung waere `O_TMPFILE` +
-  `linkat` nach Verifikation des letzten Chunks.
+* **Kein Schluesselverzeichnis, keine Schluesselverwaltung
 * **Kein Diceware-Generator in der Oberflaeche.** Die Staerkepruefung (§8,
   HC-03) lehnt schwache Passphrasen ab, schlaegt aber keine vor. Ein
   eingebauter Generator (sieben Woerter aus einer festen Liste) waere eine

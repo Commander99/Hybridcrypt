@@ -42,8 +42,7 @@ hybridcrypt (`main.rs`) ist ein einzelnes Rust-Binary mit nativer Oberfläche (`
 - **Verschlüsseln** — mit dem `.hpub` eines Empfängers, ohne eigene Passphrase (`hybrid::encrypt_stream`)
 - **Entschlüsseln** — mit der eigenen `.hkey` und deren Passphrase (`hybrid::decrypt_stream`)
 
-Der Prozess ist zweigeteilt: ein Fensterprozess (Rolle „GUI") und ein per Re-Exec gestarteter Kindprozess (Rolle „Worker", `--worker`), der die gesamte Kryptografie ausführt. Es gibt keinen HTTP-Server, keine Netzwerkverbindung und keinen Browserbezug — beides ist im Code schlicht nicht vorhanden (`Cargo.toml` enthält keine Netzwerk-Crates außer `libc`/`eframe`/den Krypto-Bibliotheken).
-
+Der Prozess ist zweigeteilt: ein Fensterprozess (Rolle „GUI") und ein per Re-Exec gestarteter Kindprozess (Rolle „Worker", `--worker`), der die gesamte Kryptografie ausführt. 
 ---
 
 ## Version
@@ -81,7 +80,7 @@ overflow-checks = true  # harter Abbruch bei Integer-Overflow statt stillem Wrap
 
 `panic = "unwind"` ist die Voreinstellung und wird bewusst **nicht** auf `"abort"` umgestellt — ein Kommentar im Profil begründet das: Bei `"abort"` liefen keine `Drop`-Implementierungen, also auch kein `zeroize()` der gesperrten Puffer im Panik-Fall.
 
-**Build-Voraussetzungen laut `Cargo.toml`:** kein `cmake`, kein C++-Toolchain — alle Abhängigkeiten sind reine Rust-Crates. `eframe` wird mit `default-features = false` und den Features `glow`, `x11`, `wayland`, `default_fonts` eingebunden; die Default-Features `accesskit`, `persistence` und `web_screen_reader` sind explizit abgewählt (siehe [Architektur](#architektur)).
+**Build-Voraussetzungen laut `Cargo.toml`:** kein `cmake`, kein C++-Toolchain — alle Abhängigkeiten sind ausschließlich Rust-Crates. `eframe` wird mit `default-features = false` und den Features `glow`, `x11`, `wayland`, `default_fonts` eingebunden; die Default-Features `accesskit`, `persistence` und `web_screen_reader` sind explizit abgewählt (siehe [Architektur](#architektur)).
 
 **macOS:** Ein per `cargo build` erzeugtes Binary ist nicht signiert; Gatekeeper greift beim ersten Start. Ein Kommentar in `proc.rs` verweist für den dortigen TOCTOU-Umgang (siehe [Architektur](#architektur)) explizit auf Code-Signing/Gatekeeper **und** eine Installation in einem nur für root beschreibbaren Verzeichnis als Grundvoraussetzung.
 

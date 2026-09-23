@@ -1,0 +1,58 @@
+[package]
+name = "hybridcrypt"
+version = "0.3.0"
+edition = "2021"
+publish = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+# panic = "unwind" (Standard) ist hier BEWUSST gewaehlt: bei "abort" wuerden im
+# Panikfall KEINE Drop-Implementierungen laufen und damit kein zeroize() der
+# gesperrten Puffer. Unwinding garantiert, dass SecureBuf::drop jeden Secret-
+# Puffer ueberschreibt, bevor der Prozess endet.
+strip = true      # keine Debug-Symbole im Binary (weniger forensische Metadaten)
+overflow-checks = true   # Audit HC-15: der u64-Chunk-Zaehler soll bei einem
+                          # (praktisch unerreichbaren) Ueberlauf hart abbrechen
+                          # statt stillschweigend zu umlaufen.
+
+[dependencies]
+# --- Kryptografie ---
+# Audit HC-04: ml-kem hat ein "zeroize"-Feature, das NICHT in den Default-
+# Features enthalten ist. Ohne es wird die DecapsulationKey nicht beim Drop
+# ueberschrieben. Explizit aktiviert.
+ml-kem      = { version = "0.2", features = ["zeroize"] }
+# Audit HC-14: Default-Features von p384 ziehen ecdsa/pem/pkcs8 unnoetig mit,
+# was die Angriffsflaeche und Kompilierzeit unnoetig vergroessert. Wir
+# brauchen ausschliesslich ECDH.
+p384        = { version = "0.13", default-features = false, features = ["ecdh", "std"] }
+hkdf        = "0.12"
+sha2        = "0.10"
+chacha20poly1305 = "0.10"
+argon2      = "0.5"                                   # Passphrase -> Key-Encryption-Key
+rand        = "0.8"
+zeroize     = "1.8"
+# Audit HC-03: Passphrase-Staerke wird nicht mehr nur ueber die Zeichenzahl
+# geprueft, sondern ueber ein tatsaechliches Staerkemodell (Mustererkennung,
+# Woerterbuecher, Tastaturmuster) - siehe hybrid.rs::check_passphrase_strength.
+zxcvbn      = "3"
+# Audit HC-03: NFKC-Normalisierung vor der Schluesselableitung, damit dieselbe
+# Passphrase auf macOS und Tails (unterschiedliche Standard-Normalform bei
+# Sonderzeichen/Umlauten) denselben Schluessel ergibt.
+unicode-normalization = "0.1"
+
+# --- GUI: nativ, kein Server, kein Browser ---
+# default-features = false schliesst bewusst aus:
+#   accesskit          -> wuerde UI-Text ueber AT-SPI/D-Bus an andere Prozesse geben
+#   persistence        -> wuerde Fenster-/App-State nach ~/.local/share schreiben
+#   web_screen_reader  -> irrelevant, Angriffsflaeche
+eframe = { version = "0.33", default-features = false, features = [
+    "glow", "x11", "wayland", "default_fonts",
+] }
+
+# --- Low-Level / Systemhaertung ---
+libc        = "0.2"
+
+# --- Fehlerbehandlung ---
+anyhow      = "1"

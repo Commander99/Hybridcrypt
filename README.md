@@ -320,7 +320,7 @@ Ausschließlich Punkte, die sich direkt aus Code oder Code-Kommentaren ergeben:
 
 8. **Der Worker ist über `ps`/`argv` als solcher erkennbar.** `proc.rs` startet ihn mit `cmd.arg("--worker")`; dass eine kryptografische Operation läuft, ist damit für andere lokale Prozesse desselben Systems sichtbar — welche Operation und mit welchen Schlüsseln, nicht, da diese ausschließlich über fd 3 übertragen werden.
 
-9. **Kein Modulus-Check von ML-KEM-Schlüsseln im eigenen Code sichtbar.** `encrypt_stream()` dekodiert den Encapsulation-Key eines fremden `.hpub` über `Encoded::<…>::try_from(...)` und `EncapsulationKey::from_bytes(...)` aus der `ml-kem`-Crate; ob dabei der in FIPS 203 geforderte Modulus-Check erfolgt, liegt außerhalb dieses Quellcodes und ist von hier aus nicht verifizierbar.
+9. **Kein Modulus-Check von ML-KEM-Schlüsseln.** `encrypt_stream()` dekodiert den Encapsulation-Key eines fremden `.hpub` über `Encoded::<…>::try_from(...)` und `EncapsulationKey::from_bytes(...)` aus der `ml-kem`-Crate; ob dabei der in FIPS 203 geforderte Modulus-Check erfolgt, liegt außerhalb dieses Quellcodes
 
 10. **`PT_DENY_ATTACH`/`PR_SET_DUMPABLE=0` schützen nur vor Debugger-Attach.** Beide Aufrufe in `hardening.rs::deny_debugger()` verhindern laut ihrer dokumentierten Semantik ausschließlich das Anhängen eines Debuggers/`ptrace` bzw. den Zugriff über `/proc/<pid>/mem` — sie sind kein Schutz gegen Angreifer mit weitergehenden Rechten auf dem System.
 
@@ -332,10 +332,5 @@ Aus der Abwesenheit entsprechender Typen/Funktionen im Quellcode:
 
 - **Keine Signatur oder Absenderauthentizität.** Weder `hybrid.rs` noch die Dateiformate enthalten ein Signaturschema (z. B. ML-DSA); `.hpub` und `.hkey` bestehen ausschließlich aus KEM-/ECDH-Schlüsselmaterial. Der AEAD-Tag jedes `.hcx`-Chunks beweist Integrität des Inhalts, nicht Urheberschaft — wer die `.hpub` eines Empfängers besitzt, kann eine für ihn gültige Datei erzeugen.
 - **Kein Padding von Dateinamen oder -größe.** Die Containergröße hängt direkt und ohne Ausgleich von der Klartextgröße ab (`push_u32_prefixed`/Chunk-Längen).
-- **Keine Schlüsselverwaltung.** Es gibt keine Datenstruktur, die mehrere Schlüssel verwaltet, benennt oder katalogisiert — jede Operation nimmt genau die vom Dateibrowser ausgewählten Pfade entgegen.
-- **Kein Diceware- oder Passphrase-Generator.** `check_passphrase_strength()` lehnt schwache Eingaben ab, schlägt aber keine eigenen Passphrasen vor.
 - **Kein zusätzliches Keyfile als zweiter Argon2-Faktor.** `derive_kek()` nimmt ausschließlich `salt` und die (normalisierte) Passphrase entgegen.
 
----
-
-*Dieses README beschreibt ausschließlich, was aus dem beigefügten Quellcode von hybridcrypt 0.3.0 ableitbar ist. Es ersetzt keine unabhängige Sicherheitsprüfung vor einem produktiven Einsatz mit hohem Schutzbedarf.*

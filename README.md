@@ -10,7 +10,7 @@ anpasste. Das Prinzip wurde so lange wiederholt (5 Durchgänge), bis eine im Rah
 wurde und die Audits keine sicherheitsrelevanten Fehler mehr fanden.
 Zu guter letzt wurde der Code noch einmal manuell begutachtet. 
 
-**Die detaillierten Ergebnisse der ausgeführten Testläufe liegen in Hybridcrypt 0.3.0-Fuzzing-Unit-Tests.md**
+**Die detaillierten Ergebnisse der ersten ausgeführten Testläufe liegen in Hybridcrypt 0.3.0-Fuzzing-Unit-Tests.md**
 
 Die Kryptografie beruht auf einer hybriden Kombination von ML-KEM-1024 × P-384 × SHA-256 · ChaCha20-Poly1305.
 

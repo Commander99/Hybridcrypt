@@ -7,8 +7,10 @@ Große Teile des Codes und der Kommentare wurden mit Unterstützung von Claude O
 Konzept des Loop-Engineerings genutzt, wobei Claude Opus 5 die Programmierarbeit übernahm, GPT5 anschließend auf Basis 
 des Codes eine Audit Liste schrieb und eine vollständig neue Instanz von Opus 5 diese anhand des Codes abarbeitete und 
 anpasste. Das Prinzip wurde so lange wiederholt (5 Durchgänge), bis eine im Rahmen des Projekts ausreichende Härtung erreicht 
-wurde und die Audits keine sicherheitsrelevanten Fehler mehr fanden. Ein gründliches Code fuzzing fand bisher nicht statt.
+wurde und die Audits keine sicherheitsrelevanten Fehler mehr fanden.
 Zu guter letzt wurde der Code noch einmal manuell begutachtet. 
+
+**Die detaillierten Ergebnisse der ausgeführten Testläufe liegen in Hybridcrypt 0.3.0-Fuzzing-Unit-Tests.md**
 
 Die Kryptografie beruht auf einer hybriden Kombination von ML-KEM-1024 × P-384 × SHA-256 · ChaCha20-Poly1305.
 

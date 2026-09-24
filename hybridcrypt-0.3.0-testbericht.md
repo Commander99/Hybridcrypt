@@ -9,15 +9,10 @@ Stand: 24.09.2026 · Plattform: macOS · Werkzeuge: `cargo test`, `cargo-fuzz` (
 | Unit-Tests | 16 Tests + 1 Hilfstest | 16 bestanden, 0 fehlgeschlagen (3,18 s) |
 | Fuzzing | 3 Ziele, ca. 60,6 Mio. Ausführungen | kein Crash, kein Panic, kein ASan-Fehler |
 
-## 2. Änderungen am Code
 
-- Die Chunk-Schleifen wurden aus `encrypt_stream` und `decrypt_stream` in `encrypt_chunks` und `decrypt_chunks` ausgelagert. Das Verhalten ist unverändert. Dadurch lässt sich die Chunk-Logik ohne KEM und Argon2 testen und fuzzen.
-- `Cargo.toml`: `[profile.test]` mit `opt-level = 3`. Das Release-Profil ist unverändert.
-- Neu: `src/hybrid_tests.rs`, `fuzz/`.
+## 2. Unit-Tests (`cargo test`)
 
-## 3. Unit-Tests (`cargo test`)
-
-### 3.1 Chunk-Ebene (fester Schlüssel, ohne KEM/Argon2)
+### 2.1 Chunk-Ebene (fester Schlüssel, ohne KEM/Argon2)
 
 | Test | Prüfung | Ergebnis |
 |---|---|---|
@@ -30,7 +25,7 @@ Stand: 24.09.2026 · Plattform: macOS · Werkzeuge: `cargo test`, `cargo-fuzz` (
 | `chunk_ueberlange_laengenfelder_werden_abgelehnt` | Längenfeld 64 KiB + 1, 0x80000000, `u32::MAX` → `BadContainer`, keine Ausgabe | bestanden |
 | `chunk_zufallsdaten_und_mutationen_nie_akzeptiert_und_nie_panic` | 20.000 Zufallseingaben (0–299 B) und 20.000 Mutationen (1–3 Byte) eines gültigen Containers; feste PRNG-Seed | bestanden |
 
-### 3.2 Konfiguration und Schlüsseldatei
+### 2.2 Konfiguration und Schlüsseldatei
 
 | Test | Prüfung | Ergebnis |
 |---|---|---|
@@ -38,7 +33,7 @@ Stand: 24.09.2026 · Plattform: macOS · Werkzeuge: `cargo test`, `cargo-fuzz` (
 | `keyfile_parameter_ueber_grenze_werden_ohne_argon2_abgelehnt` | 6 präparierte `.hkey`-Header mit `m_cost`/`t_cost`/`lanes` über dem Maximum → `BadKeyFile`, Laufzeit < 2 s | bestanden |
 | `keyfile_zu_kurz_oder_falsche_magic_wird_abgelehnt` | leere, zu kurze und falsche Magic-Bytes → `BadKeyFile` | bestanden |
 
-### 3.3 Gesamtstapel (ML-KEM-1024, P-384, Argon2id)
+### 2.3 Gesamtstapel (ML-KEM-1024, P-384, Argon2id)
 
 | Test | Prüfung | Ergebnis |
 |---|---|---|
@@ -48,13 +43,13 @@ Stand: 24.09.2026 · Plattform: macOS · Werkzeuge: `cargo test`, `cargo-fuzz` (
 | `voll_manipulierter_header_wird_erkannt_und_gibt_nichts_aus` | je ein Bitflip an 13 Header-Positionen (Magic, Längenfelder, KEM-Ciphertext, ephemerer Punkt, `base_nonce`) → Fehler, keine Ausgabe | bestanden |
 | `voll_wiederholtes_verschluesseln_liefert_immer_neue_zufallswerte` | 300 Verschlüsselungen derselben Daten; KEM-Ciphertext, ephemerer Punkt, `base_nonce` und Gesamtcontainer jeweils einzigartig | bestanden |
 
-### 3.4 Hilfstest
+### 2.4 Hilfstest
 
 | Test | Zweck | Ergebnis |
 |---|---|---|
 | `schreibe_fuzz_seed_corpus` (`#[ignore]`) | schreibt 4 gültige Startdateien für den Fuzzer (Klartext 0 B, 10 B, 300 B, 64 KiB + 5) | separat ausgeführt: bestanden |
 
-## 4. Fuzzing (`cargo fuzz`)
+## 3. Fuzzing (`cargo fuzz`)
 
 | Ziel | Eigenschaft | Ausführungen | Dauer | Ergebnis |
 |---|---|---|---|---|
@@ -64,7 +59,7 @@ Stand: 24.09.2026 · Plattform: macOS · Werkzeuge: `cargo test`, `cargo-fuzz` (
 
 Coverage `roundtrip`: cov 629, ft 1543, Korpus 72 Einträge (22 KB).
 
-## 5. Grenzen der Aussage
+## 4. Grenzen der Aussage
 
 - Im `roundtrip`-Lauf blieb die Eingabelänge bei ca. 1,7 KB (`lim: 1670`). Mehrere Chunks (> 64 KiB) wurden dort nicht erreicht; sie sind nur durch die Unit-Tests abgedeckt.
 - `chunks` prüft praktisch nur Fehlerpfade, da der Fuzzer keine gültigen Poly1305-Tags erzeugen kann.
@@ -72,13 +67,13 @@ Coverage `roundtrip`: cov 629, ft 1543, Korpus 72 Einträge (22 KB).
 - Nicht durchgeführt: unabhängige Reimplementierung nach Spezifikation, `cargo audit`, `cargo clippy`.
 - Kurze Fuzz-Läufe (2–10 min) sind kein Sicherheitsbeleg.
 
-## 6. Beobachtungen aus dem Code-Review
+## 5. Beobachtungen aus dem Code-Review
 
 - `decrypt_stream` gibt bereits authentifizierte Chunks aus, bevor ein späterer Fehler (z. B. Kürzung) erkannt wird. Die GUI löscht die Teilausgabe bei Worker-Exit-Code ≠ 0 (`wipe_and_remove`, `gui.rs`).
 - Kein Aufruf von `wipe_and_remove`, wenn `run_worker` selbst mit Fehler zurückkehrt; eine bereits angelegte Ausgabedatei bleibt bestehen.
 - Bei hartem Abbruch der GUI (Absturz, `kill -9`, Stromausfall) bleibt der bis dahin geschriebene Klartext-Präfix auf dem Datenträger.
 
-## 7. Reproduktion
+## 6. Reproduktion
 
 ```
 cargo test

@@ -59,13 +59,13 @@ Stand: 24.09.2026 · Plattform: macOS · Werkzeuge: `cargo test`, `cargo-fuzz` (
 
 Coverage `roundtrip`: cov 629, ft 1543, Korpus 72 Einträge (22 KB).
 
-## 4. Grenzen der Aussage
+## 4. Grenzen der Aussagekraft
 
 - Im `roundtrip`-Lauf blieb die Eingabelänge bei ca. 1,7 KB (`lim: 1670`). Mehrere Chunks (> 64 KiB) wurden dort nicht erreicht; sie sind nur durch die Unit-Tests abgedeckt.
 - `chunks` prüft praktisch nur Fehlerpfade, da der Fuzzer keine gültigen Poly1305-Tags erzeugen kann.
 - Nicht getestet: `decrypt_stream` als Ganzes im Fuzzer (Argon2, ML-KEM, Punktvalidierung), `secure.rs`, `hardening.rs`, GUI, Prozesshärtung (`mlock`, Zeroize, Core-Dumps).
 - Nicht durchgeführt: unabhängige Reimplementierung nach Spezifikation, `cargo audit`, `cargo clippy`.
-- Kurze Fuzz-Läufe (2–10 min) sind kein Sicherheitsbeleg.
+- Kurze Fuzz-Läufe (2–10 min) 
 
 ## 5. Beobachtungen aus dem Code-Review
 

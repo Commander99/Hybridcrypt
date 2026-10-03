@@ -85,20 +85,9 @@ cargo +nightly fuzz run parsers   -- -max_total_time=120
 
 ---
 
-# Ergänzung (Stand 02.10.2026)
-
-> Die Abschnitte 1–6 oben bleiben unverändert. Diese Ergänzung enthält (A) die Ergebnisse weiterer Testläufe und (B) die Beschreibung der neu bereitgestellten Testvektor-Suite für ML-KEM-1024 und P-384.
-
 ## 7. Ergebnisse weiterer Testläufe
 
-### 7.1 Herkunft und Rahmenbedingungen
-
-- Quelle: Konsolenausgaben der Läufe (Datei „Testergebnisse“), übernommen ohne Nacharbeit. Das Log enthält kein Datum; Plattform laut Pfaden und Toolchain-Namen: macOS, `x86_64-apple-darwin`, Nightly-Toolchain; Clippy-Hinweis-URL nennt `rust-1.98.0`. Geprüftes Crate: `hybridcrypt v0.3.0`. Aufrufe mit `--no-default-features` (ohne GUI).
-- Lokale Dateipfade wurden aus dieser Ergänzung bewusst weggelassen.
-- Die Tests und Fuzz-Ziele dieser Ergänzung (`kats`, `roundtrip`, `negative`, `property`; `decrypt_container`, `encrypt_recipient_blob`, `decrypt_keyfile`) tragen andere Namen als die in Abschnitt 2 und 3. Es handelt sich um eine zweite Testsuite, nicht um eine Wiederholung. Die Ergebnisse in Abschnitt 2 und 3 werden dadurch weder bestätigt noch ersetzt.
-- Abschnitt 4 nennt `cargo audit` und `cargo clippy` als „nicht durchgeführt“. Beide liegen jetzt vor (7.5, 7.6); Abschnitt 4 wurde nicht geändert.
-
-### 7.2 Übersicht
+### 7.1 Übersicht
 
 | Bereich | Umfang | Ergebnis |
 |---|---|---|
@@ -114,9 +103,9 @@ cargo +nightly fuzz run parsers   -- -max_total_time=120
 
 Insgesamt 57 bestandene Tests (55 im Debug-Lauf, 2 zusätzlich im Release-Lauf mit `--ignored`).
 
-### 7.3 Unit-, Roundtrip-, Negativ- und Property-Tests
+### 7.2 Unit-, Roundtrip-, Negativ- und Property-Tests
 
-#### 7.3.1 Known-Answer-Tests
+#### 7.2.1 Known-Answer-Tests
 
 | Test | Prüfung | Ergebnis |
 |---|---|---|
@@ -127,7 +116,7 @@ Insgesamt 57 bestandene Tests (55 im Debug-Lauf, 2 zusätzlich im Release-Lauf m
 | `argon2id_rfc9106_section_5_3` | Argon2id gegen RFC 9106, Abschnitt 5.3 | bestanden |
 | `argon2id_different_salt_gives_different_output` | anderes Salt ergibt andere Ausgabe | bestanden |
 
-#### 7.3.2 Roundtrip
+#### 7.2.2 Roundtrip
 
 | Test | Prüfung | Ergebnis |
 |---|---|---|
@@ -138,7 +127,7 @@ Insgesamt 57 bestandene Tests (55 im Debug-Lauf, 2 zusätzlich im Release-Lauf m
 | `same_plaintext_encrypts_differently_each_time` | gleicher Klartext ergibt verschiedene Container | bestanden |
 | `roundtrip_several_mib`, `roundtrip_several_hundred_mib` | große Datenmengen (nur mit `--ignored`, im Release-Lauf) | bestanden |
 
-#### 7.3.3 Negativtests (30)
+#### 7.2.3 Negativtests (30)
 
 | Gruppe | Anzahl | Geprüft (Testnamen sinngemäß) | Ergebnis |
 |---|---|---|---|
@@ -150,7 +139,7 @@ Insgesamt 57 bestandene Tests (55 im Debug-Lauf, 2 zusätzlich im Release-Lauf m
 | Schlüssel/Passphrase | 3 | falsche Passphrase, falscher Schlüssel-Blob, falscher Empfänger | alle abgelehnt |
 | Systematischer Sweep | 1 | Manipulation an jedem 97. Byte | bestanden |
 
-#### 7.3.4 Property-Tests
+#### 7.2.4 Property-Tests
 
 | Test | Ergebnis |
 |---|---|
@@ -160,7 +149,7 @@ Insgesamt 57 bestandene Tests (55 im Debug-Lauf, 2 zusätzlich im Release-Lauf m
 
 Alle drei Tests liefen jeweils länger als 60 Sekunden (Debug-Build).
 
-### 7.4 Fuzzing
+### 7.3 Fuzzing
 
 Aufrufe: `cargo +nightly fuzz run decrypt_container -- -max_len=200000`, `cargo +nightly fuzz run encrypt_recipient_blob`, `cargo +nightly fuzz run decrypt_keyfile`. Alle drei Läufe wurden mit Strg+C beendet („run interrupted“). Die Laufzeit ist im Log nicht festgehalten. Die Werte stammen aus der jeweils letzten ausgegebenen Statuszeile.
 
@@ -174,7 +163,7 @@ Aufrufe: `cargo +nightly fuzz run decrypt_container -- -max_len=200000`, `cargo 
 
 Einschränkungen: Die Läufe sind kurz, die Coverage stagniert bei `decrypt_container` (der AEAD-Tag weist mutierte Eingaben früh ab), und `decrypt_keyfile` kam wegen der Argon2-Kosten nur auf etwa 35.000 Ausführungen.
 
-### 7.5 Statische Analyse und Abhängigkeiten
+### 7.4 Statische Analyse und Abhängigkeiten
 
 **Clippy** (`cargo clippy --no-default-features --all-targets -- -D warnings`): Abbruch mit einem Fehler.
 
@@ -192,7 +181,7 @@ Da der Build abbrach, sind weitere Lints (falls vorhanden) nicht ausgewertet. St
 
 Woher die Abhängigkeit kommt (z. B. über die GUI-Bibliotheken), wurde nicht geprüft. `cargo audit` liest `Cargo.lock` unabhängig von den Build-Features.
 
-### 7.6 Miri (`secure.rs`)
+### 7.5 Miri (`secure.rs`)
 
 Aufruf: `cargo +nightly miri test --no-default-features --lib`. Ergebnis: **Fehler, Lauf abgebrochen** („aborting due to 1 previous error“).
 
@@ -207,75 +196,4 @@ Aufruf: `cargo +nightly miri test --no-default-features --lib`. Ergebnis: **Fehl
 
 Hinweise: Im mitgelieferten Quellarchiv `hybridcrypt-0_3_0.zip` ist dieses Miri-Backend nicht enthalten (kein `miri_storage`, `secure.rs` mit 334 Zeilen); die Zuordnung zum reinen Miri-Backend beruht daher auf der Beschreibung in `TESTING.md` und dem Miri-Log, nicht auf einer Prüfung des getesteten Codes. Da Miri bei der ersten Verletzung abbricht, ist für die übrigen Tests in `secure.rs` unter Miri kein Ergebnis belegt.
 
-### 7.7 Im Log nicht enthalten
 
-`cargo deny`, AddressSanitizer-/UBSan-Läufe der Unit-Tests, Guard-Page-Test, Worker-IPC-Tests, Tests von `hardening.rs`/GUI sowie die Ergebnisse der Tests aus `secure.rs` im normalen (Nicht-Miri-)Lauf sind in der vorliegenden Ausgabe nicht enthalten und werden hier nicht bewertet.
-
-### 7.8 Reproduktion (Ergänzung)
-
-```
-cargo test --no-default-features --test kats
-cargo test --no-default-features --test roundtrip
-cargo test --no-default-features --test negative
-cargo test --no-default-features --test property
-cargo test --release --no-default-features --test roundtrip -- --ignored
-cargo +nightly fuzz run decrypt_container -- -max_len=200000
-cargo +nightly fuzz run encrypt_recipient_blob
-cargo +nightly fuzz run decrypt_keyfile
-cargo +nightly miri test --no-default-features --lib
-cargo clippy --no-default-features --all-targets -- -D warnings
-cargo audit
-```
-
-(Die genauen Testaufrufe zu 7.3 stehen nicht im Log; die Zeilen oben sind aus den Namen der Testdateien im Log abgeleitet und nicht als Original-Eingabe zu verstehen.)
-
-## 8. Testvektor-Suite: ML-KEM-1024 (NIST ACVP) und P-384-ECDH (Wycheproof)
-
-### 8.1 Status
-
-| Punkt | Stand |
-|---|---|
-| Datei | `tests/vectors.rs` (zusätzlich `scripts/fetch_vectors.sh`, `VECTORS.md`) |
-| Vektorquellen | NIST ACVP-Server (`ML-KEM-keyGen-FIPS203`, `ML-KEM-encapDecap-FIPS203`), Wycheproof (`ecdh_secp384r1_test.json`, `ecdh_secp384r1_ecpoint_test.json`) |
-| Vektordateien | nicht im Lieferumfang; werden mit `scripts/fetch_vectors.sh` geladen und mit SHA-256 protokolliert |
-| Zustand der Suite | geschrieben, **nicht kompiliert und nicht ausgeführt** (Entwicklungsumgebung ohne Rust-Toolchain und ohne Netzwerk) |
-| Ergebnisse | **ausstehend** (Tabelle 8.4) |
-
-### 8.2 Enthaltene Tests
-
-| Test | Prüfung | Vektordatei nötig |
-|---|---|---|
-| `acvp_ml_kem_1024_keygen` | `generate_deterministic(d, z)` liefert exakt `ek` und `dk` der ACVP-Vektoren; `dk` enthält dasselbe `ek` | ja |
-| `acvp_ml_kem_1024_encap_decap` | Encapsulation mit festem `m` ergibt `c` und `k`; Decapsulation (inkl. ungültiger Ciphertexte, implizite Ablehnung) ergibt `k`; `encapsulationKeyCheck` (Modulus-Prüfung nach FIPS 203, 7.2) stimmt mit `testPassed` überein | ja |
-| `wycheproof_ecdh_secp384r1_ecpoint` | ECDH mit SEC1-Punkt: `valid` muss das erwartete Geheimnis liefern, `invalid` muss abgelehnt werden, `acceptable` darf ablehnen, aber nie ein falsches Ergebnis liefern | ja |
-| `wycheproof_ecdh_secp384r1_der` | wie oben, öffentlicher Schlüssel als X.509-SPKI (DER) | ja |
-| `selbsttest_ml_kem_deterministisch_und_roundtrip` | gleiche Seeds ergeben gleiche Schlüssel; Encaps/Decaps stimmen überein; Modulus-Prüfung erkennt manipuliertes `ek` | nein |
-| `selbsttest_p384_ecdh_symmetrie_und_spki` | `DH(a, B) = DH(b, A)`; SPKI-Hilfsfunktion Rundlauf | nein |
-| `p384_ungueltige_punkte_werden_abgelehnt` | Identität, leere Eingabe, Punkt außerhalb der Kurve, Koordinate ≥ p, falsche Präfixe/Längen werden von `from_sec1_bytes` abgelehnt (selbst konstruierte Fälle, keine Fremdvektoren) | nein |
-
-Aufrufe der Bibliotheken entsprechen denen in `hybrid.rs` (`MlKem1024`, `Decapsulate`, `Ciphertext`, `Encoded`, `P384Public::from_sec1_bytes`, `P384Secret::from_slice`, `diffie_hellman`).
-
-Nicht abgedeckt: ACVP-`decapsulationKeyCheck` (benötigt SHA3-256, wird gezählt und als „übersprungen“ ausgewiesen), P-384-ECDSA, ML-KEM-512/-768 (werden gezählt und nicht geprüft), Wycheproof-ML-KEM-Dateien.
-
-### 8.3 Reproduktion
-
-```
-./scripts/fetch_vectors.sh
-cargo test --no-default-features --test vectors -- --nocapture
-```
-
-Fehlen die Vektordateien, schlagen die vier Vektortests mit einer Anleitung fehl (kein stilles Überspringen). Mit `HYBRIDCRYPT_VECTORS_OPTIONAL=1` werden sie stattdessen als „SKIPPED“ ausgegeben und gelten dann **nicht** als geprüft.
-
-### 8.4 Ergebnisse (nach Ausführung einzutragen)
-
-| Test | Ausgeführt | Übersprungen | Fremde Parametersätze/Kurven | Fehler | Ergebnis |
-|---|---|---|---|---|---|
-| `acvp_ml_kem_1024_keygen` | – | – | – | – | ausstehend |
-| `acvp_ml_kem_1024_encap_decap` | – | – | – | – | ausstehend |
-| `wycheproof_ecdh_secp384r1_ecpoint` | – | – | – | – | ausstehend |
-| `wycheproof_ecdh_secp384r1_der` | – | – | – | – | ausstehend |
-| `selbsttest_ml_kem_deterministisch_und_roundtrip` | – | – | – | – | ausstehend |
-| `selbsttest_p384_ecdh_symmetrie_und_spki` | – | – | – | – | ausstehend |
-| `p384_ungueltige_punkte_werden_abgelehnt` | – | – | – | – | ausstehend |
-
-SHA-256 der verwendeten Vektordateien: aus `tests/vectors/SHA256SUMS.txt` zu übernehmen.

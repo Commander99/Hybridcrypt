@@ -151,7 +151,7 @@ Alle drei Tests liefen jeweils länger als 60 Sekunden (Debug-Build).
 
 ### 7.3 Fuzzing
 
-Aufrufe: `cargo +nightly fuzz run decrypt_container -- -max_len=200000`, `cargo +nightly fuzz run encrypt_recipient_blob`, `cargo +nightly fuzz run decrypt_keyfile`. Alle drei Läufe wurden mit Strg+C beendet („run interrupted“). Die Laufzeit ist im Log nicht festgehalten. Die Werte stammen aus der jeweils letzten ausgegebenen Statuszeile.
+Aufrufe: `cargo +nightly fuzz run decrypt_container -- -max_len=200000`, `cargo +nightly fuzz run encrypt_recipient_blob`, `cargo +nightly fuzz run decrypt_keyfile`.
 
 | Ziel | Ausführungen (mind.) | cov | ft | Korpus | exec/s | RSS | Befund |
 |---|---|---|---|---|---|---|---|
@@ -163,37 +163,7 @@ Aufrufe: `cargo +nightly fuzz run decrypt_container -- -max_len=200000`, `cargo 
 
 Einschränkungen: Die Läufe sind kurz, die Coverage stagniert bei `decrypt_container` (der AEAD-Tag weist mutierte Eingaben früh ab), und `decrypt_keyfile` kam wegen der Argon2-Kosten nur auf etwa 35.000 Ausführungen.
 
-### 7.4 Statische Analyse und Abhängigkeiten
 
-**Clippy** (`cargo clippy --no-default-features --all-targets -- -D warnings`): Abbruch mit einem Fehler.
 
-| Datei | Lint | Meldung |
-|---|---|---|
-| `src/secure.rs:359` | `clippy::len_without_is_empty` | `SecureBuf` hat eine öffentliche Methode `len`, aber keine `is_empty` |
-
-Da der Build abbrach, sind weitere Lints (falls vorhanden) nicht ausgewertet. Status: offen.
-
-**cargo audit:** 1277 Advisories geladen, `Cargo.lock` mit 400 Abhängigkeiten geprüft. Keine Schwachstelle gemeldet; eine erlaubte Warnung:
-
-| Crate | Version | Art | ID |
-|---|---|---|---|
-| `ttf-parser` | 0.25.1 | unmaintained | RUSTSEC-2026-0192 (Advisory vom 28.06.2026) |
-
-Woher die Abhängigkeit kommt (z. B. über die GUI-Bibliotheken), wurde nicht geprüft. `cargo audit` liest `Cargo.lock` unabhängig von den Build-Features.
-
-### 7.5 Miri (`secure.rs`)
-
-Aufruf: `cargo +nightly miri test --no-default-features --lib`. Ergebnis: **Fehler, Lauf abgebrochen** („aborting due to 1 previous error“).
-
-| Feld | Inhalt |
-|---|---|
-| Fehlerklasse | Stacked-Borrows-Verstoß (Miri weist darauf hin, dass die Regeln noch experimentell sind) |
-| Test | `secure::tests::capacity_exactly_page_size` (`src/secure.rs:493`) |
-| Aufrufkette | `SecureBuf::from_slice` (Zeile 316) → `SecureBuf::push_bytes` (Zeilen 330–334, `copy_nonoverlapping`) |
-| Ursache laut Miri | Der Zeiger aus `storage.as_mut_ptr()` (Zeile 234) wird durch das Verschieben von `storage` in das Feld `miri_storage` (Zeile 241) ungültig und anschließend über `self.mem` benutzt |
-| Betroffener Code | das Feld `miri_storage` gehört laut `TESTING.md` zu einem Backend, das nur unter Miri verwendet wird; der mmap-/`mlock`-Pfad der normalen Builds war nicht Gegenstand dieses Befunds |
-| Status | offen |
-
-Hinweise: Im mitgelieferten Quellarchiv `hybridcrypt-0_3_0.zip` ist dieses Miri-Backend nicht enthalten (kein `miri_storage`, `secure.rs` mit 334 Zeilen); die Zuordnung zum reinen Miri-Backend beruht daher auf der Beschreibung in `TESTING.md` und dem Miri-Log, nicht auf einer Prüfung des getesteten Codes. Da Miri bei der ersten Verletzung abbricht, ist für die übrigen Tests in `secure.rs` unter Miri kein Ergebnis belegt.
 
 
